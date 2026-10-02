@@ -13,7 +13,8 @@ final class SnakeGame {
     private final Random random;
     private Direction direction = Direction.RIGHT, pending = direction;
     Cell food;
-    int score;
+    boolean bonusFood;
+    int score, meals;
     boolean over, won;
 
     SnakeGame(int width, int height, Random random) {
@@ -26,7 +27,7 @@ final class SnakeGame {
         // Compare with the executed move, preventing reversal between ticks.
         if (next.dx != -direction.dx || next.dy != -direction.dy) pending = next;
     }
-    int delayMillis() { return Math.max(65, 220 - (score / 10) * 8); }
+    int delayMillis() { return Math.max(65, 150 - meals * 8); }
     void tick() {
         if (over) return;
         direction = pending;
@@ -39,7 +40,7 @@ final class SnakeGame {
             return;
         }
         snake.addFirst(next);
-        if (eating) { score += 10; placeFood(); }
+        if (eating) { score += bonusFood ? 50 : 10; meals++; placeFood(); }
         else snake.removeLast();
     }
     private void placeFood() {
@@ -49,6 +50,9 @@ final class SnakeGame {
             if (!snake.contains(cell)) free.add(cell);
         }
         if (free.isEmpty()) { food = null; won = over = true; }
-        else food = free.get(random.nextInt(free.size()));
+        else {
+            food = free.get(random.nextInt(free.size()));
+            bonusFood = random.nextInt(5) == 0;
+        }
     }
 }

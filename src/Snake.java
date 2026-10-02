@@ -3,17 +3,18 @@ import java.util.Random;
 /** ASCII Snake for Java 17+ and ANSI terminals. */
 public final class Snake {
     private static final String ESC = "\u001b[";
+    @SuppressWarnings("try") // Shutdown hook must also release audio on Ctrl+C.
     public static void main(String[] args) {
         if (args.length > 0 && (args[0].equals("--help") || args[0].equals("-h"))) {
             System.out.println("ASCII Snake: W/A/S/D move, P pauses, R restarts, Q quits. Java 17+.");
             return;
         }
-        try {
+        try (SoundEffects sounds = new SoundEffects()) {
             TerminalInput input = new TerminalInput();
-            Thread cleanup = new Thread(() -> { input.close(); restoreScreen(); });
+            Thread cleanup = new Thread(() -> { input.close(); sounds.close(); restoreScreen(); });
             Runtime.getRuntime().addShutdownHook(cleanup);
             System.out.print(ESC + "?1049h" + ESC + "?25l" + ESC + "2J");
-            try { play(input); }
+            try { play(input, sounds); }
             finally {
                 input.close(); restoreScreen();
                 Runtime.getRuntime().removeShutdownHook(cleanup);
@@ -27,12 +28,12 @@ public final class Snake {
         System.out.print(ESC + "?25h" + ESC + "?1049l");
         System.out.flush();
     }
-    private static void play(TerminalInput input) throws InterruptedException {
+    private static void play(TerminalInput input, SoundEffects sounds) throws InterruptedException {
         SnakeGame game = new SnakeGame(30, 16, new Random());
         boolean paused = false;
         int best = 0;
         long nextTick = System.nanoTime() + 1_000_000_000L;
-        render(game, paused, best);
+        render(game, paused, best, sounds.available());
         while (true) {
             if (input.ended()) throw new IllegalStateException("Terminal input closed unexpectedly.");
             boolean dirty = false;
@@ -59,25 +60,28 @@ public final class Snake {
                 }
             }
             if (!paused && !game.over && System.nanoTime() >= nextTick) {
+                int previousScore = game.score;
                 game.tick(); best = Math.max(best, game.score);
+                if (game.over && !game.won) sounds.play("death");
+                else if (game.score > previousScore) sounds.play("eat");
                 nextTick = System.nanoTime() + game.delayMillis() * 1_000_000L;
                 dirty = true;
             }
-            if (dirty) render(game, paused, best);
+            if (dirty) render(game, paused, best, sounds.available());
             Thread.sleep(5);
         }
     }
-    private static void render(SnakeGame game, boolean paused, int best) {
+    private static void render(SnakeGame game, boolean paused, int best, boolean sound) {
         StringBuilder out = new StringBuilder(ESC + "H");
         line(out, "ASCII SNAKE | Score: " + game.score + " | Best: " + best);
-        line(out, "Move interval: " + game.delayMillis() + " ms");
+        line(out, "Move interval: " + game.delayMillis() + " ms | Sound: " + (sound ? "on" : "unavailable"));
         line(out, "+" + "-".repeat(game.width) + "+");
         for (int y = 0; y < game.height; y++) {
             StringBuilder row = new StringBuilder("|");
             for (int x = 0; x < game.width; x++) {
                 SnakeGame.Cell cell = new SnakeGame.Cell(x, y);
                 row.append(cell.equals(game.snake.getFirst()) ? '@'
-                        : game.snake.contains(cell) ? 'o' : cell.equals(game.food) ? '*' : ' ');
+                        : game.snake.contains(cell) ? 'o' : cell.equals(game.food) ? (game.bonusFood ? '$' : '*') : ' ');
             }
             line(out, row.append('|').toString());
         }
@@ -86,7 +90,7 @@ public final class Snake {
         line(out, game.won ? "YOU WIN! Board filled. Press R to play again."
                 : game.over ? "GAME OVER! Press R to play again."
                 : paused ? "PAUSED - press P to resume."
-                : "Eat * for 10 points. Avoid walls and your body!");
+                : "Food: * = 10 pts, $ = 50 pts. Avoid collisions!");
         out.append(ESC).append("J");
         System.out.print(out); System.out.flush();
     }

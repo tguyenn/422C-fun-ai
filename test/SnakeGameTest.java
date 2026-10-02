@@ -7,19 +7,32 @@ public final class SnakeGameTest {
     }
     public static void main(String[] args) {
         SnakeGame game = new SnakeGame(10, 8, new Random(42));
+        check(game.delayMillis() == 150, "Faster initial speed");
         check(!game.snake.contains(game.food), "Food starts in empty cell");
         game.turn(SnakeGame.Direction.UP); game.turn(SnakeGame.Direction.LEFT); game.tick();
         check(game.snake.getFirst().equals(new SnakeGame.Cell(5, 3)), "Prevent between-tick reversal");
-        game.food = new SnakeGame.Cell(5, 2); game.tick();
+        game.food = new SnakeGame.Cell(5, 2); game.bonusFood = false; game.tick();
         check(game.score == 10 && game.snake.size() == 4, "Eating grows snake and scores");
-        check(game.delayMillis() == 212, "Eating increases speed");
+        check(game.delayMillis() == 142, "Eating increases speed");
         check(!game.snake.contains(game.food), "New food avoids body");
         game.tick(); game.tick(); game.tick();
         check(game.over, "Wall collision ends game");
         var head = game.snake.getFirst(); game.tick();
         check(game.snake.getFirst().equals(head), "Game over freezes movement");
-        game.score = 10000;
+        game.meals = 1000;
         check(game.delayMillis() == 65, "Speed is capped");
+
+        game = new SnakeGame(10, 8, new Random(4));
+        game.food = new SnakeGame.Cell(6, 4); game.bonusFood = true; game.tick();
+        check(game.score == 50 && game.snake.size() == 4, "Bonus food gives 5x points and grows once");
+        check(game.delayMillis() == 142, "Bonus food increases speed by one meal");
+        boolean sawNormal = false, sawBonus = false;
+        for (int seed = 0; seed < 100; seed++) {
+            SnakeGame sample = new SnakeGame(10, 8, new Random(seed));
+            sawBonus |= sample.bonusFood; sawNormal |= !sample.bonusFood;
+            check(!sample.snake.contains(sample.food), "Either food type spawns on an empty cell");
+        }
+        check(sawNormal && sawBonus, "Both food types can spawn");
 
         game = new SnakeGame(6, 4, new Random(1));
         game.snake.clear();
